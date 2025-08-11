@@ -238,10 +238,10 @@ void change_cost(unsigned int y, unsigned int x, int v, unsigned int raggio){
 
     /*debug:printa tutta la matrice
     for (int x = 0; x < righe; x++) {
-        for (int y = 0; y < colonne; y++) {
-            printf("DEBUG: cella (%d,%d) con costo %d\n", x, y, ACCESSO(x, y).cost);
-        }
-    }*/
+            for (int y = 0; y < colonne; y++) {
+                printf("DEBUG: cella (%d,%d) con costo %d\n", x, y, ACCESSO(x, y).cost);
+            }
+        }*/
 
     //cambio con successo
     printf("OK\n");
@@ -323,24 +323,24 @@ int get_vicini_terrestri(int x, int y, int vicini[][2]) {
     int direzioni_pari[6][2] = {{-1, -1}, {-1, 0}, {-1, 1}, {0, 1}, {1, 0}, {0, -1}};
     int direzioni_dispari[6][2] = {{0, -1}, {-1, 0}, {0, 1}, {1, 1}, {1, 0}, {1, -1}};
     
-    //ho cambiato da x a y
-    int (*direzioni)[2] = (y % 2 == 0) ? direzioni_pari : direzioni_dispari;
+    //sceglie in base a riga, quindi x
+    int (*direzioni)[2] = (x % 2 == 0) ? direzioni_pari : direzioni_dispari;
     int count = 0;
     
     for (int i = 0; i < 6; i++) {
         int nx = x + direzioni[i][0];
         int ny = y + direzioni[i][1];
-        
+
         if (coordinate_valide(nx, ny)) {
             vicini[count][0] = nx;
             vicini[count][1] = ny;
             count++;
-        }rché pr
+        }
     }
     return count;
 }
 
-//minheap per A*
+//minheap e strutture tipiche per A*
 MinHeap* create_heap(int capacity) {
     MinHeap* heap = malloc(sizeof(MinHeap));
     heap->nodes = malloc(capacity * sizeof(HeapNode));
@@ -440,7 +440,7 @@ int astar(int start_x, int start_y, int end_x, int end_y) {
         if (visited[righe - 1 - x][y]) continue;
         visited[righe - 1 - x][y] = true;
         
-        //preso
+        //TROVATO
         if (x == end_x && y == end_y) {
 
             int result = g_score[righe - 1 - x][y];
@@ -547,6 +547,7 @@ PROBEMI:
 
  //sistemato// le rotte VALIDE ma NON RAGGIUNGIBILI danno 100 invece di -1
     può esserci un problema con le approssimazioni per difetto in change_cost? 
+    EXAMPLE.TXT SUPERATO
     
 //sistemato//perché adesso example funziona example, ma empty da errori grossi?
     io ho colonne e righe invertite... ci ho perso 3 giorni -.-
@@ -572,4 +573,16 @@ PROBEMI:
         nb: il change_cost fa fallire travel_cost 0 0 2 0 perché A* vede (colonna 1,riga 0) come intransitabile (actually, vede tutta la colonna 1 intransitabile e quindi -1)
     madooo era la distanza_esagoni che prendeva le coordinate invertite -.-.-.-.-
     3 giorni così, ora ho invertito x,y in y,x e dovrebbe andare bene...
+    EDGE_CASES.TXT SUPERATO
+
+//DA SISTEMARE//empty continua a darmi problemi... come mai? adesso mi sbaglia più spesso e di molto rispetto a prima.
+    è un problema di A*, probabilmente come prende i vicini terrestri
+        ho rimesso x%2 e sceglie in base alla riga, le prime 25 righe sono corrette!!!
+    ho di nuovo errore alla riga 25 ma dovrei averla corretta perché ora non uso più il casting per troncare, cosa non va ora?
+        ho notato che spesso sono differenze di travel_cost di +/- 1 (pochi casi +/- 2). 
+        a volta capita siano differenze più grandi di un paio di centinaia di valori (magari per un toggle_air non contato?)
+        nel file diff sono segnati 4 errori nelle prime 50 righe in cui un mio 475 in realtà sarebbe un 474
+        gli altri sono vari a circa 6k, 18k, 24k, 30k, 36k, 42k, 48k, 54k. è un caso? non credo
+
+    
 */

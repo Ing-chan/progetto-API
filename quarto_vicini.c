@@ -80,16 +80,16 @@ int main() {
             colonne = nuove_colonne;
         }
         else if (strncmp(comando, "change_cost", 11) == 0) {
-            sscanf(riga, "%*s %u %u %d %u", &x, &y, &v, &raggio);
-            change_cost(x, y, v, raggio);
+            sscanf(riga, "%*s %u %u %d %u", &y, &x, &v, &raggio);
+            change_cost(y, x, v, raggio);
         }
         else if (strncmp(comando, "toggle_air_route", 16) == 0) {
-            sscanf(riga, "%*s %u %u %u %u", &x1, &y1, &x2, &y2);
-            toggle_air_route(x1, y1, x2, y2);
+            sscanf(riga, "%*s %u %u %u %u", &y1, &x1, &y2, &x2);
+            toggle_air_route(y1, x1, y2, x2);
         }
         else if (strncmp(comando, "travel_cost", 11) == 0) {
-            sscanf(riga, "%*s %u %u %u %u", &xp, &yp, &xd, &yd);
-            travel_cost(xp, yp, xd, yd);
+            sscanf(riga, "%*s %u %u %u %u", &yp, &xp, &yd, &xd);
+            travel_cost(yp, xp, yd, xd);
         }
     }
 
@@ -149,7 +149,7 @@ void init(unsigned int nuove_colonne, unsigned int nuove_righe){
 }
 
 //distanza tra esagoni usando coordinate cubiche
-int distanza_esagoni(int x1, int y1, int x2, int y2) {
+int distanza_esagoni(int y1, int x1, int y2, int x2) {
     int q1 = y1;
     int r1 = x1 - (y1 + (y1 & 1)) / 2;
     int s1 = -q1 - r1;
@@ -235,6 +235,13 @@ void change_cost(unsigned int y, unsigned int x, int v, unsigned int raggio){
             }
         }
     }
+
+    /*debug:printa tutta la matrice
+    for (int x = 0; x < righe; x++) {
+        for (int y = 0; y < colonne; y++) {
+            printf("DEBUG: cella (%d,%d) con costo %d\n", x, y, ACCESSO(x, y).cost);
+        }
+    }*/
 
     //cambio con successo
     printf("OK\n");
@@ -328,7 +335,7 @@ int get_vicini_terrestri(int x, int y, int vicini[][2]) {
             vicini[count][0] = nx;
             vicini[count][1] = ny;
             count++;
-        }
+        }rché pr
     }
     return count;
 }
@@ -433,7 +440,7 @@ int astar(int start_x, int start_y, int end_x, int end_y) {
         if (visited[righe - 1 - x][y]) continue;
         visited[righe - 1 - x][y] = true;
         
-        //TROVATO
+        //preso
         if (x == end_x && y == end_y) {
 
             int result = g_score[righe - 1 - x][y];
@@ -469,7 +476,7 @@ int astar(int start_x, int start_y, int end_x, int end_y) {
                 
                 if (tentative_g < g_score[righe - 1 - nx][ny]) {
                     g_score[righe - 1 - nx][ny] = tentative_g;
-                    int h = distanza_esagoni(nx, ny, end_x, end_y); //euristica ammissibile
+                    int h = distanza_esagoni(nx, ny, end_x, end_y); //euristica sicuro ammissibile
                     int f = tentative_g + h;
                     heap_push_astar(heap, nx, ny, tentative_g, f);
                 }
@@ -547,11 +554,22 @@ PROBEMI:
         che bal troppa sbatta invertire tutto da coppie (riga,colonna) a coppie (colonna,riga),
         inverto le principali e poi faccio le operazioni tenendo conto di dover cambiare
 
-//DA SISTEMARE//un diff ha rivelato che sbaglio di poche unità i travel_cost. come mai? 
+//sistemato//un diff su empty ha rivelato che sbaglio di poche unità i travel_cost. come mai? 
+    ho fato debug su astar e confermato funziona come ho inteso, non è il problema.
     ho provato a modificare vicini_terrestri e ora li prende nell'ordine confermato corretto.
-    ho provato a non ribaltare le righe di visited e g_score in astar ed è anche peggio di prima, ho cancellato la branch.
-    edge_cases.txt fa errori come un travel_cost 2 da -1 e un 5 da 3. perché?
-        potrebbe essere di nuovo errori nel arrotondamento, devo per forza usare floor e non basta il cast
-        perche floor non compilaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
-    
+    ho provato a non ribaltare le righe di visited e g_score in astar ed è anche peggio di prima, ho cancellato quella branch.
+    edge_cases.txt fa errori come un travel_cost 2 da -1 e un 5 da 3. perché? 
+    focus su edge_cases
+    potrebbe essere di nuovo errori nel arrotondamento, devo per forza usare floor e non basta il cast
+        floor non compila, ho usato una ad hoc.
+    per forza sono errori in change_cost perché prima funzionano i travel.
+    cosa sto sbagliando in change_cost? il mio floor_float non va bene?
+    confermato da init 10 5 e change_cost 5 2 -9 5 che rimane a 1 solo la colonna più a sx della matrice (colonna 0). perché?
+        deve essere un errore nel calcolo della distanza perché alcune caselle a distanza 5 vengono modificate. esempio: colonna 9,riga 4
+        alte colonne a distanza 5 non vengono toccate (giustamente). esempio: colonna 0 riga 2
+        entrambi distano 5 ma solo nel secondo caso non modifica.
+        probabile bug nel calcolo della distanza. perché?
+        nb: il change_cost fa fallire travel_cost 0 0 2 0 perché A* vede (colonna 1,riga 0) come intransitabile (actually, vede tutta la colonna 1 intransitabile e quindi -1)
+    madooo era la distanza_esagoni che prendeva le coordinate invertite -.-.-.-.-
+    3 giorni così, ora ho invertito x,y in y,x e dovrebbe andare bene...
 */

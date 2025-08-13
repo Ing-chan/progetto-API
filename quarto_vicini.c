@@ -11,6 +11,7 @@
 //per accedere con la riga ribaltata in basso in una coppia riga, colonna
 #define ACCESSO(x, y) mappa[righe - 1 - (x)][y] 
 
+//struct per la mappa
 typedef struct {
     int dest_x, dest_y; //coordinate destinazione
     int cost; 
@@ -22,10 +23,10 @@ typedef struct {
     int air_count; //max 5 elementi
 } Esagono;
 
+//struct per dijkstra
 typedef struct {
     int x, y;
-    int g_score;  // costo reale dalla sorgente
-    int f_score;  // g_score + euristica
+    int g_score;
 } HeapNode;
 
 typedef struct {
@@ -34,14 +35,31 @@ typedef struct {
     int capacity;
 } MinHeap;
 
+//struct per la cache
+typedef struct {
+    unsigned int src_x, src_y, dst_x, dst_y;
+    int cost;
+    bool valid;
+} CacheEntry;
+
+typedef struct {
+    CacheEntry* entries;
+    int capacity;
+    int size;
+} CachePercorsi;
+
 //globali perché devono accederci le altre funzioni
 unsigned int colonne, righe; 
 Esagono** mappa = NULL;
 
+//globali per la cache
+CachePercorsi* cache = NULL;
+//int cache_version = 0;  per debug incrementato ad ogni change_cost/toggle_air_route
+
+
 //dichiarazione funzioni
 void init(unsigned int nuove_colonne, unsigned int nuove_righe);
 void change_cost(unsigned int y, unsigned int x, int v, unsigned int raggio);
-int floor_float(float val);
 int distanza_esagoni(int x1, int y1, int x2, int y2);
 bool coordinate_valide(unsigned int x, unsigned int y);
 void toggle_air_route(unsigned int y1, unsigned int x1, unsigned int y2, unsigned int x2);
@@ -49,15 +67,23 @@ void travel_cost(unsigned int yp, unsigned int xp, unsigned int yd, unsigned int
 
 //funzioni per MinHeap e A*
 MinHeap* create_heap(int capacity);
-void heap_push_astar(MinHeap* heap, int x, int y, int g_score, int f_score);
+void heap_push(MinHeap* heap, int x, int y, int g_score);
 HeapNode heap_pop(MinHeap* heap);
 bool heap_empty(MinHeap* heap);
 void free_heap(MinHeap* heap);
 void heapify_up(MinHeap* heap, int idx);
 void heapify_down(MinHeap* heap, int idx);
 int get_vicini_terrestri(int x, int y, int vicini[][2]);
-int astar(int start_x, int start_y, int end_x, int end_y);
+int dijkstra(int start_x, int start_y, int end_x, int end_y);
 
+//funzioni per la cache per velocizzare i travel_cost
+CachePercorsi* crea_cache(int capacity);
+void metti_cache(unsigned int src_x, unsigned int src_y, unsigned int dst_x, unsigned int dst_y, int cost);
+int cache_lookup(unsigned int src_x, unsigned int src_y, unsigned int dst_x, unsigned int dst_y);
+unsigned int hash_coordinate(unsigned int x1, unsigned int y1, unsigned int x2, unsigned int y2, int capacity);
+void cancella_cache();
+
+//inizio main
 int main() {
     char riga[80];       // buffer sufficiente per una riga di comando
     char comando[20];    // spazio per il comando
@@ -150,12 +176,13 @@ void init(unsigned int nuove_colonne, unsigned int nuove_righe){
 
 //distanza tra esagoni usando coordinate cubiche
 int distanza_esagoni(int y1, int x1, int y2, int x2) {
+
     int q1 = y1;
-    int r1 = x1 - (y1 + (y1 & 1)) / 2;
+    int r1 = x1 - (y1 + (y1 & 1)) / 2; //ho cambiato  - + in - - ma non cambia nulla
     int s1 = -q1 - r1;
     
     int q2 = y2;
-    int r2 = x2 - (y2 + (y2 & 1)) / 2;
+    int r2 = x2 - (y2 + (y2 & 1)) / 2;//,,
     int s2 = -q2 - r2;
     
     return (abs(q1 - q2) + abs(r1 - r2) + abs(s1 - s2)) / 2;
@@ -163,15 +190,6 @@ int distanza_esagoni(int y1, int x1, int y2, int x2) {
 
 bool coordinate_valide(unsigned int x, unsigned int y) {
     return x < righe && y < colonne;
-}
-
-//ho dovuto farla ad hoc perchè quel babbp di floor non viene linkato da gcc
-int floor_float(float val) {
-    int i = (int)val;
-    if (val < 0 && val != i) {
-        return i - 1;
-    }
-    return i;
 }
 
 void change_cost(unsigned int y, unsigned int x, int v, unsigned int raggio){
@@ -201,11 +219,13 @@ void change_cost(unsigned int y, unsigned int x, int v, unsigned int raggio){
 
                 //calcola nuovo costo via formula, usando approssimazione per difetto
                 float delta = (float) (raggio - dist) / raggio;
-                if (delta < 0) delta = 0;
-                int incremento = floor_float(v * delta); //devo mettere floor ma non va
-                //non basta il cast
-                //da errore anche se metto -lm alla fine, perché? 
-
+                int incremento;
+                if (delta < 0){
+                    delta = 0;
+                    incremento = 0;
+                }else {
+                    incremento = (int) floorf((float) v * delta);
+                }
                 //printf("DEBUG: change_cost su (%d,%d): vecchio_costo=%d\n", i, j, ACCESSO(i, j).cost);
 
                 int nuovo_costo = ACCESSO(i, j).cost + incremento;
@@ -245,6 +265,9 @@ void change_cost(unsigned int y, unsigned int x, int v, unsigned int raggio){
 
     //cambio con successo
     printf("OK\n");
+
+    //cancella la cache perché cambiata
+    cancella_cache();
 }
 
 void toggle_air_route(unsigned int y1, unsigned int x1, unsigned int y2, unsigned int x2) {
@@ -294,7 +317,7 @@ void toggle_air_route(unsigned int y1, unsigned int x1, unsigned int y2, unsigne
         for (int i = 0; i < ACCESSO(x1, y1).air_count; i++) {
             somma_costi += ACCESSO(x1, y1).rotte[i].cost;
         }
-        int nuovo_costo = floor_float((float) somma_costi / (ACCESSO(x1, y1).air_count + 1)); //anche qua appross per difetto con la mia ad hoc
+        int nuovo_costo = (int) floorf((float) somma_costi / (ACCESSO(x1, y1).air_count + 1)); //anche qua appross per difetto con la mia ad hoc
         
         //limita costo tra 0 e 100
         if (nuovo_costo > 100) nuovo_costo = 100;
@@ -308,15 +331,17 @@ void toggle_air_route(unsigned int y1, unsigned int x1, unsigned int y2, unsigne
         ACCESSO(x1, y1).rotte[ACCESSO(x1, y1).air_count].dest_y = y2;
         ACCESSO(x1, y1).rotte[ACCESSO(x1, y1).air_count].cost = nuovo_costo;
         ACCESSO(x1, y1).air_count++;
-
         
     }
     //rotta trovata e rimossa oppure rotta aggiunta
     printf("OK\n");
+
+    //cancella la cache perché modificata
+    cancella_cache();
 }
 
 //calcola i vicini terrestri di un esagono
-int get_vicini_terrestri(int x, int y, int vicini[][2]) {
+int get_vicini_terrestri(int x, int y, int vicini[][2]) { 
 
     //pattern per righe pari e dispari
     //posizioni: bassosx, sx, altosx, altodx, dx, bassodx
@@ -349,14 +374,14 @@ MinHeap* create_heap(int capacity) {
     return heap;
 }
 
-void heap_push_astar(MinHeap* heap, int x, int y, int g_score, int f_score) {
+void heap_push(MinHeap* heap, int x, int y, int g_score) {
     if (heap->size >= heap->capacity) {
         heap->capacity *= 2;
         heap->nodes = realloc(heap->nodes, heap->capacity * sizeof(HeapNode));
     }
     
     int idx = heap->size;
-    heap->nodes[idx] = (HeapNode){x, y, g_score, f_score};
+    heap->nodes[idx] = (HeapNode){x, y, g_score};
     heap->size++;
     heapify_up(heap, idx);
 }
@@ -380,9 +405,20 @@ void free_heap(MinHeap* heap) {
     free(heap);
 }
 
+//funzione per tie-breaking deterministico
+bool better_node(HeapNode* a, HeapNode* b) {
+
+    //normale via g
+    if (a->g_score != b->g_score) {
+        return a->g_score < b->g_score;
+    }
+
+    return a->y < b->y; //altrimenti vado di colonna
+}
+
 void heapify_up(MinHeap* heap, int idx) {
     int parent = (idx - 1) / 2;
-    if (idx > 0 && heap->nodes[idx].f_score < heap->nodes[parent].f_score) {
+    if (idx > 0 && better_node(&heap->nodes[idx], &heap->nodes[parent])) {
         HeapNode temp = heap->nodes[idx];
         heap->nodes[idx] = heap->nodes[parent];
         heap->nodes[parent] = temp;
@@ -395,9 +431,9 @@ void heapify_down(MinHeap* heap, int idx) {
     int right = 2 * idx + 2;
     int smallest = idx;
     
-    if (left < heap->size && heap->nodes[left].f_score < heap->nodes[smallest].f_score)
+    if (left < heap->size && better_node(&heap->nodes[left], &heap->nodes[smallest]))
         smallest = left;
-    if (right < heap->size && heap->nodes[right].f_score < heap->nodes[smallest].f_score)
+    if (right < heap->size && better_node(&heap->nodes[right], &heap->nodes[smallest]))
         smallest = right;
     
     if (smallest != idx) {
@@ -408,8 +444,100 @@ void heapify_down(MinHeap* heap, int idx) {
     }
 }
 
+//funzioni della cache
+CachePercorsi* crea_cache(int capacity) {
+    CachePercorsi* c = malloc(sizeof(CachePercorsi));
+    c->entries = malloc(capacity * sizeof(CacheEntry));
+    c->capacity = capacity;
+    c->size = 0;
+    
+    //inizializza tutte le entry come non valide
+    for (int i = 0; i < capacity; i++) {
+        c->entries[i].valid = false;
+    }
+    
+    return c;
+}
+
+//combina le 4 coordinate in un hash
+unsigned int hash_coordinate(unsigned int x1, unsigned int y1, unsigned int x2, unsigned int y2, int capacity) {
+    unsigned int hash = x1 * 73856093 + y1 * 19349663 + x2 * 83492791 + y2 * 50331653;
+    return hash % capacity;
+}
+
+//ricerca nella cache
+int cache_lookup(unsigned int src_x, unsigned int src_y, unsigned int dst_x, unsigned int dst_y) {
+    if (cache == NULL) return -2;  //cache non inizializzata
+    
+    unsigned int index = hash_coordinate(src_x, src_y, dst_x, dst_y, cache->capacity);
+    
+    //linear probing per gestire collisioni
+    for (int i = 0; i < cache->capacity; i++) {
+        int pos = (index + i) % cache->capacity;
+        CacheEntry* entry = &cache->entries[pos];
+        
+        if (!entry->valid) {
+            return -2;  //entry vuota, non trovato
+        }
+        
+        if (entry->src_x == src_x && entry->src_y == src_y && 
+            entry->dst_x == dst_x && entry->dst_y == dst_y) {
+            return entry->cost;  //trovato
+        }
+    }
+    
+    return -2;  //cache piena + non trovato
+}
+
+//inserisce nella cache
+void metti_cache(unsigned int src_x, unsigned int src_y, unsigned int dst_x, unsigned int dst_y, int cost) {
+    if (cache == NULL) {
+        cache = crea_cache(10000);  // Cache di 10k entry
+    }
+    
+    unsigned int index = hash_coordinate(src_x, src_y, dst_x, dst_y, cache->capacity);
+    
+    // Linear probing per trovare uno slot
+    for (int i = 0; i < cache->capacity; i++) {
+        int pos = (index + i) % cache->capacity;
+        CacheEntry* entry = &cache->entries[pos];
+        
+        if (!entry->valid) {//slot vuoto, inserisci qui
+            entry->src_x = src_x;
+            entry->src_y = src_y;
+            entry->dst_x = dst_x;
+            entry->dst_y = dst_y;
+            entry->cost = cost;
+            entry->valid = true;
+            cache->size++;
+            return;
+        }
+        
+        //aggiorna entry esistente
+        if (entry->src_x == src_x && entry->src_y == src_y && entry->dst_x == dst_x && entry->dst_y == dst_y) {
+            entry->cost = cost;
+            return;
+        }
+    }
+    
+    // Cache piena quindi sostituisci una entry random (strategia semplice)
+    int pos = rand() % cache->capacity;
+    cache->entries[pos] = (CacheEntry){src_x, src_y, dst_x, dst_y, cost, true};
+}
+
+// Invalida tutta la cache causa change_cost/toggle_air_route
+void cancella_cache() {
+    if (cache == NULL) return;
+    
+    for (int i = 0; i < cache->capacity; i++) {
+        cache->entries[i].valid = false;
+    }
+    cache->size = 0;
+    //cache_version++; per debug
+}
+
 //algoritmo per ricercare 
-int astar(int start_x, int start_y, int end_x, int end_y) {
+int dijkstra(int start_x, int start_y, int end_x, int end_y) {
 
     //array per g_score e visited
     int** g_score = malloc(righe * sizeof(int*));
@@ -427,15 +555,18 @@ int astar(int start_x, int start_y, int end_x, int end_y) {
     //inizializza 
     g_score[righe - 1 - start_x][start_y] = 0;
     MinHeap* heap = create_heap(righe * colonne);
-    int h_start = distanza_esagoni(start_x, start_y, end_x, end_y);
 
     //partenza
-    heap_push_astar(heap, start_x, start_y, 0, h_start);
+    heap_push(heap, start_x, start_y, 0);
+
+    //printf("DEbug: partenza da: %d,%d\n", start_y, start_x);
     
     while (!heap_empty(heap)) {
 
         HeapNode current = heap_pop(heap);
         int x = current.x, y = current.y;
+
+        //printf("DEGUB: percorso fino a %d,%d con g= %d\n", y, x, g_score[righe - 1 - x][y]);
         
         if (visited[righe - 1 - x][y]) continue;
         visited[righe - 1 - x][y] = true;
@@ -476,9 +607,7 @@ int astar(int start_x, int start_y, int end_x, int end_y) {
                 
                 if (tentative_g < g_score[righe - 1 - nx][ny]) {
                     g_score[righe - 1 - nx][ny] = tentative_g;
-                    int h = distanza_esagoni(nx, ny, end_x, end_y); //euristica sicuro ammissibile
-                    int f = tentative_g + h;
-                    heap_push_astar(heap, nx, ny, tentative_g, f);
+                    heap_push(heap, nx, ny, tentative_g);
                 }
             }
             
@@ -494,9 +623,7 @@ int astar(int start_x, int start_y, int end_x, int end_y) {
                 
                 if (tentative_g < g_score[righe - 1 - nx][ny]) {
                     g_score[righe - 1 - nx][ny] = tentative_g;
-                    int h = distanza_esagoni(nx, ny, end_x, end_y);
-                    int f = tentative_g + h;
-                    heap_push_astar(heap, nx, ny, tentative_g, f);
+                    heap_push(heap, nx, ny, tentative_g);
                 }
             }
         }
@@ -534,11 +661,29 @@ void travel_cost(unsigned int yp, unsigned int xp, unsigned int yd, unsigned int
         return;  
     }
 
-    int result = astar(xp, yp, xd, yd);
+    // Cerca nella cache
+    int cached_result = cache_lookup(xp, yp, xd, yd);
+    if (cached_result != -2) {
+        printf("%d\n", cached_result);
+
+        return;
+    }
+
+    //non trovato in cache quindi calcola
+    int result = dijkstra(xp, yp, xd, yd);
     printf("%d\n", result);
+
+    // Inserisci in cache solo se il risultato è valido
+    if (result >= 0) {
+        metti_cache(xp, yp, xd, yd, result);
+    }
 }
 
-/*
+/*DA FARE:
+    implementare una cache per evitare di dover fare sempre la ricerca e velocizzare i travel_cost
+        mi son rotto di aspettare vada tutto bene e l'ho messa comunque.
+
+
 PROBEMI:
 //sistemato// toggle-air-route NON RITORNA nulla nel caso in cui RIMUOVE una rotta ESISTENTE 
 
@@ -546,25 +691,21 @@ PROBEMI:
     quelle maledette globali direttamente in scanf...
 
  //sistemato// le rotte VALIDE ma NON RAGGIUNGIBILI danno 100 invece di -1
-    può esserci un problema con le approssimazioni per difetto in change_cost? 
+    può esserci un problema con le approssimazioni per difetto in change_cost?
     EXAMPLE.TXT SUPERATO
     
 //sistemato//perché adesso example funziona example, ma empty da errori grossi?
-    io ho colonne e righe invertite... ci ho perso 3 giorni -.-
+    io ho colonne e righe invertite... ci ho perso 2 giorni -.-
     !!!tutti i comandi ricevono coordinate (colonna, riga) come init e non (riga, colonna)!!!
-        che bal troppa sbatta invertire tutto da coppie (riga,colonna) a coppie (colonna,riga),
+        che bal troppa sbatta invertire tutto da coppie (riga,colonna) a coppie (colonna,riga)
         inverto le principali e poi faccio le operazioni tenendo conto di dover cambiare
 
-//sistemato//un diff su empty ha rivelato che sbaglio di poche unità i travel_cost. come mai? 
-    ho fato debug su astar e confermato funziona come ho inteso, non è il problema.
-    ho provato a modificare vicini_terrestri e ora li prende nell'ordine confermato corretto.
-    ho provato a non ribaltare le righe di visited e g_score in astar ed è anche peggio di prima, ho cancellato quella branch.
-    edge_cases.txt fa errori come un travel_cost 2 da -1 e un 5 da 3. perché? 
+//sistemato//edge_cases.txt fa errori come un travel_cost 2 da -1 e un 5 da 3. perché? 
     focus su edge_cases
     potrebbe essere di nuovo errori nel arrotondamento, devo per forza usare floor e non basta il cast
         floor non compila, ho usato una ad hoc.
     per forza sono errori in change_cost perché prima funzionano i travel.
-    cosa sto sbagliando in change_cost? il mio floor_float non va bene?
+    cosa sto sbagliando in change_cost? il mio floor del float non va bene?
     confermato da init 10 5 e change_cost 5 2 -9 5 che rimane a 1 solo la colonna più a sx della matrice (colonna 0). perché?
         deve essere un errore nel calcolo della distanza perché alcune caselle a distanza 5 vengono modificate. esempio: colonna 9,riga 4
         alte colonne a distanza 5 non vengono toccate (giustamente). esempio: colonna 0 riga 2
@@ -575,14 +716,42 @@ PROBEMI:
     3 giorni così, ora ho invertito x,y in y,x e dovrebbe andare bene...
     EDGE_CASES.TXT SUPERATO
 
-//DA SISTEMARE//empty continua a darmi problemi... come mai? adesso mi sbaglia più spesso e di molto rispetto a prima.
+//DA SISTEMARE//un diff su empty ha rivelato che sbaglio di poche unità i travel_cost. come mai? 
+    ho fato debug su a* e confermato funziona come ho inteso, non è il problema.
+    ho provato a modificare vicini_terrestri e ora li prende nell'ordine confermato corretto.
+    ho provato a non ribaltare le righe di visited e g_score in a* ed è anche peggio di prima, ho cancellato quella branch.
+    empty continua a darmi problemi... come mai? adesso mi sbaglia più spesso e di molto rispetto a prima.
     è un problema di A*, probabilmente come prende i vicini terrestri
-        ho rimesso x%2 e sceglie in base alla riga, le prime 25 righe sono corrette!!!
+        ho corretto x%2 e sceglie in base alla riga, le prime 25 righe sono corrette!
     ho di nuovo errore alla riga 25 ma dovrei averla corretta perché ora non uso più il casting per troncare, cosa non va ora?
-        ho notato che spesso sono differenze di travel_cost di +/- 1 (pochi casi +/- 2). 
-        a volta capita siano differenze più grandi di un paio di centinaia di valori (magari per un toggle_air non contato?)
-        nel file diff sono segnati 4 errori nelle prime 50 righe in cui un mio 475 in realtà sarebbe un 474
-        gli altri sono vari a circa 6k, 18k, 24k, 30k, 36k, 42k, 48k, 54k. è un caso? non credo
+            ho notato che spesso sono differenze di travel_cost di +/- 1 (pochi casi +/- 2). 
+            a volta capita siano differenze più grandi di un paio di centinaia di valori (magari per un toggle_air non contato?)
+            nel file diff sono segnati 4 errori nelle prime 50 righe in cui un mio 475 in realtà sarebbe un 474
+            gli altri sono vari a circa 6k, 18k, 24k, 30k, 36k, 42k, 48k, 54k. è un caso? non credo
+        devo sistemare di nuovo quel cabbo di floor ad hoc, ho provato a usar double invece di float ma non cambia...
+    miracolo, floor ora funziona perché ho riscritto da zero tasks e launch, evidentemente avevo sbagliato qualcosa prima
+        il problema però rimane, a riga 25 mi da 475 e non 474...
+    appurato il problema non era ne calcolo. o sbaglio di nuovo a prendere dei vicini o sbaglio ad estrarre i nodi e a volte conta due volte quello iniziale/finale?
+        ho provato a rendere deterministica la scelta del nodo in caso f score siano uguali ma peggiora solo: passa a 492 e l'errore succesivoriamen a 475.
+    può essere che in alcuni casi sbaglio ancora la distanza?
+    ho realizzato che se uso h =distanza_esagoni per le rotte aeree non è ammissibile. ritorno ad usare dijkstra ponendo h=0.
+    ora riprovo ad usare una funzione per rendere deteministisca la scelta di smallest dentro heapify
+    ok con questa nuova h=0 (e avendo usato di nuovo better_node, ma non centra) ho risolto il problema dei valori discostanti di tanti numeri
+        ora non ho più il problema delle rotte aeree
+        ho sempre il problema del travel_cost di 1 o 2.
 
+    mi son rotto di cercare di capire sto problema e nel mentre ho implmentato la cache. rimane comunque il problema che ogni tot sbaglia di 1 o i 2
+
+    sul telegram ci sono varie persone che usano floor e hanno un errore. provo a ri implmementare la mia ad hoc
+        ho fatto una ad hoc diversa da prima ma comuqnue non cambia nulla. rollback alla floor di math.h
+
+    ho fatto girare a* sul verificatore e occupa davvero troppa memoria, trasformo in dijkstra puro.
+
+    ho letto di uno che usava double come me e aveva problemi. non è cambiato nulla ad usare float.
+    ho pensato che magari aumenta di 1 perché uno dei change_cost pone a 0 un esagono lungo il percorso
+        perché evita quell'esagono, un passaggio che dovrebbe costare 1 costa 2 quindi aumenta a 475. ha senso?
     
+
+
+
 */

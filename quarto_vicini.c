@@ -8,7 +8,7 @@
 #define MAX_AIR_ROUTES 5
 #define INF INT_MAX
 
-//per accedere con la riga ribaltata in basso in una coppia riga, colonna
+//per accedere con la riga ribaltata in basso in una coppia riga, colonna perché la mappa ha 0,0 in basso a sx
 #define ACCESSO(x, y) mappa[righe - 1 - (x)][y] 
 
 //struct per la mappa
@@ -175,17 +175,26 @@ void init(unsigned int nuove_colonne, unsigned int nuove_righe){
 }
 
 //distanza tra esagoni usando coordinate cubiche
-int distanza_esagoni(int y1, int x1, int y2, int x2) {
+int distanza_esagoni(int r1, int c1, int r2, int c2) {
 
-    int q1 = y1;
-    int r1 = x1 - (y1 + (y1 & 1)) / 2; //ho cambiato  - + in - - ma non cambia nulla
-    int s1 = -q1 - r1;
-    
-    int q2 = y2;
-    int r2 = x2 - (y2 + (y2 & 1)) / 2;//,,
-    int s2 = -q2 - r2;
-    
-    return (abs(q1 - q2) + abs(r1 - r2) + abs(s1 - s2)) / 2;
+    int x1 = c1 - (r1 / 2);
+    int z1 = r1;
+    int y1 = -x1 - z1;
+
+    int x2 = c2 - (r2 / 2);
+    int z2 = r2;
+    int y2 = -x2 - z2;
+
+    // Calcolo differenze
+    int dx = abs(x1 - x2);
+    int dy = abs(y1 - y2);
+    int dz = abs(z1 - z2);
+
+    // Distanza esagonale = max delle tre differenze
+    int max1 = dx > dy ? dx : dy;
+    int max2 = dz > max1 ? dz : max1;
+
+    return max2;
 }
 
 bool coordinate_valide(unsigned int x, unsigned int y) {
@@ -200,17 +209,12 @@ void change_cost(unsigned int y, unsigned int x, int v, unsigned int raggio){
         return;
     }
 
-    /*printf("DEBUG: change_cost centro=(%d,%d), v=%d, raggio=%d\n", x, y, v, raggio);
-    int dist_AB = distanza_esagoni(2, 5, 0, 0);  // da centro a (0,0)
-    int dist_BA = distanza_esagoni(0, 0, 2, 5);  // da (0,0) a centro
-    printf("TEST SIMMETRIA: (2,5)→(0,0)=%d, (0,0)→(2,5)=%d\n", dist_AB, dist_BA);*/
-    
     //trova la distanza di tutti gli esagoni dal corrente
     //possibilmente da ottimizzare per restringere la ricerca nel raggio: devo cambiare i costi di tutti quelli in +/-(r-1)!!
     for (int i = 0; i < righe; i++) {
         for (int j = 0; j < colonne; j++) {
 
-            int dist = distanza_esagoni(x, y, i, j);
+            int dist = distanza_esagoni(righe - 1 - (x), y, righe - 1 - (i), j); 
 
             //printf("DEBUG: distanza esagono (%d,%d) da (%d,%d): %d\n", i, j, x, y, dist);
 
@@ -226,15 +230,14 @@ void change_cost(unsigned int y, unsigned int x, int v, unsigned int raggio){
                 }else {
                     incremento = (int) floorf((float) v * delta);
                 }
-                //printf("DEBUG: change_cost su (%d,%d): vecchio_costo=%d\n", i, j, ACCESSO(i, j).cost);
-
+                
                 int nuovo_costo = ACCESSO(i, j).cost + incremento;
 
                 //limita tra 0 e 100
                 if (nuovo_costo > 100) nuovo_costo = 100;
                 if (nuovo_costo < 0) nuovo_costo = 0;
 
-                //printf("DEBUG: modifica (%d,%d) dist=%d, %d→%d\n", i, j, dist, ACCESSO(i, j).cost, nuovo_costo);
+                printf("DEBUG: modifica (%d,%d) perché dist=%d da (%d,%d), costo:%d→%d\n", j, i, dist, y, x, ACCESSO(i, j).cost, nuovo_costo);
                 
                 ACCESSO(i, j).cost = nuovo_costo;
                 
@@ -256,12 +259,12 @@ void change_cost(unsigned int y, unsigned int x, int v, unsigned int raggio){
         }
     }
 
-    /*debug:printa tutta la matrice
+    /*
     for (int x = 0; x < righe; x++) {
-            for (int y = 0; y < colonne; y++) {
-                printf("DEBUG: cella (%d,%d) con costo %d\n", x, y, ACCESSO(x, y).cost);
-            }
-        }*/
+        for (int y = 0; y < colonne; y++) {
+            printf("DEBUG: cella (%d,%d) con costo %d\n", y, x, ACCESSO(x, y).cost);
+        }
+    }*/
 
     //cambio con successo
     printf("OK\n");
@@ -559,19 +562,19 @@ int dijkstra(int start_x, int start_y, int end_x, int end_y) {
     //partenza
     heap_push(heap, start_x, start_y, 0);
 
-    //printf("DEbug: partenza da: %d,%d\n", start_y, start_x);
+    printf("DEbug: partenza da: %d,%d\n", start_y, start_x);
     
     while (!heap_empty(heap)) {
 
         HeapNode current = heap_pop(heap);
         int x = current.x, y = current.y;
 
-        //printf("DEGUB: percorso fino a %d,%d con g= %d\n", y, x, g_score[righe - 1 - x][y]);
-        
         if (visited[righe - 1 - x][y]) continue;
         visited[righe - 1 - x][y] = true;
+
+        printf("DEGUB: percorso fino a %d,%d con g= %d\n", y, x, g_score[righe - 1 - x][y]);
         
-        //TROVATO
+        //fine trovata
         if (x == end_x && y == end_y) {
 
             int result = g_score[righe - 1 - x][y];
@@ -665,7 +668,6 @@ void travel_cost(unsigned int yp, unsigned int xp, unsigned int yd, unsigned int
     int cached_result = cache_lookup(xp, yp, xd, yd);
     if (cached_result != -2) {
         printf("%d\n", cached_result);
-
         return;
     }
 
@@ -734,24 +736,37 @@ PROBEMI:
     appurato il problema non era ne calcolo. o sbaglio di nuovo a prendere dei vicini o sbaglio ad estrarre i nodi e a volte conta due volte quello iniziale/finale?
         ho provato a rendere deterministica la scelta del nodo in caso f score siano uguali ma peggiora solo: passa a 492 e l'errore succesivoriamen a 475.
     può essere che in alcuni casi sbaglio ancora la distanza?
+
     ho realizzato che se uso h =distanza_esagoni per le rotte aeree non è ammissibile. ritorno ad usare dijkstra ponendo h=0.
     ora riprovo ad usare una funzione per rendere deteministisca la scelta di smallest dentro heapify
     ok con questa nuova h=0 (e avendo usato di nuovo better_node, ma non centra) ho risolto il problema dei valori discostanti di tanti numeri
         ora non ho più il problema delle rotte aeree
-        ho sempre il problema del travel_cost di 1 o 2.
+    ho sempre il problema del travel_cost di 1 o 2.
 
     mi son rotto di cercare di capire sto problema e nel mentre ho implmentato la cache. rimane comunque il problema che ogni tot sbaglia di 1 o i 2
 
     sul telegram ci sono varie persone che usano floor e hanno un errore. provo a ri implmementare la mia ad hoc
         ho fatto una ad hoc diversa da prima ma comuqnue non cambia nulla. rollback alla floor di math.h
 
-    ho fatto girare a* sul verificatore e occupa davvero troppa memoria, trasformo in dijkstra puro.
+    ho fatto girare a* sul verificatore e occupa troppa memoria, trasformo in dijkstra puro.
 
     ho letto di uno che usava double come me e aveva problemi. non è cambiato nulla ad usare float.
     ho pensato che magari aumenta di 1 perché uno dei change_cost pone a 0 un esagono lungo il percorso
         perché evita quell'esagono, un passaggio che dovrebbe costare 1 costa 2 quindi aumenta a 475. ha senso?
     
-
-
-
+    urge chiarimento per get_vicini_terrestri e distanza_esagoni: a entrambe passo da x senza ribaltarla!!
+    da considerare anche in heap push non ribalto (però li ha senso perché ribalto tutto il resto dopo?)
+        per distanza_esagoni va di culo perché va a culo che passo invertite le coordinate x e y e funziona
+        in get_vicini sto proprio dando la coordinata della mappa sbagliata quindi non va a vedere i reali costi dei vicini ma di quelli della x non ribaltata!!
+        ho ribaltato la x di vicini_terrestri, alcune cose vegono errate ma credo sia perché devo invertire anche le coordinate della distanza
+        sto ribaltando le righe coordinate della distanza e mettenod coppie x,y
+        ora ho 453 invece di 474 in input.txt mentre in edge_cases travel_cost 0 0 9 3 da -1 invece di 2, tutto il resto è corretto. come mai?
+    ora distanza_esagoni calcola la distanza esatta e il cahnge_cost influenza solo gli esagoni nel raggio.
+    altro problema: dijkstra in travel_cost 0 0 9 3 arriva a esplorare 9,4 ma non va diretto a 9,3.
+        probabile svista in vicini_terrestri?
+        alla fine non devo passare coordinate fisiche!
+        risolto, passo x,y a vicini. dovrei forse fare tutto così?
+    ora sono tornato al punto di prima: edge_cases viene passato ma riga25 di empty ecc danno ancora problemi di +/-1
+    usare ovunque in dijkstra le coordinate logiche non ha funzionato.
+    sono davveroa corto di idee...
 */

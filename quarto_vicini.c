@@ -54,7 +54,7 @@ Esagono** mappa = NULL;
 
 //globali per la cache
 CachePercorsi* cache = NULL;
-//int cache_version = 0;  per debug incrementato ad ogni change_cost/toggle_air_route
+//int cache_version = 0;  per debug incrementato ad ogni change_cost/toggle_air_route/init
 
 
 //dichiarazione funzioni
@@ -237,7 +237,7 @@ void change_cost(unsigned int y, unsigned int x, int v, unsigned int raggio){
                 if (nuovo_costo > 100) nuovo_costo = 100;
                 if (nuovo_costo < 0) nuovo_costo = 0;
 
-                printf("DEBUG: modifica (%d,%d) perché dist=%d da (%d,%d), costo:%d→%d\n", j, i, dist, y, x, ACCESSO(i, j).cost, nuovo_costo);
+                //printf("DEBUG: modifica (%d,%d) perché dist=%d da (%d,%d), costo:%d→%d\n", j, i, dist, y, x, ACCESSO(i, j).cost, nuovo_costo);
                 
                 ACCESSO(i, j).cost = nuovo_costo;
                 
@@ -259,7 +259,8 @@ void change_cost(unsigned int y, unsigned int x, int v, unsigned int raggio){
         }
     }
 
-    /*
+    
+    /*debug per vedere se funziona il change_cost
     for (int x = 0; x < righe; x++) {
         for (int y = 0; y < colonne; y++) {
             printf("DEBUG: cella (%d,%d) con costo %d\n", y, x, ACCESSO(x, y).cost);
@@ -348,21 +349,40 @@ int get_vicini_terrestri(int x, int y, int vicini[][2]) {
 
     //pattern per righe pari e dispari
     //posizioni: bassosx, sx, altosx, altodx, dx, bassodx
-    int direzioni_pari[6][2] = {{-1, -1}, {-1, 0}, {-1, 1}, {0, 1}, {1, 0}, {0, -1}};
-    int direzioni_dispari[6][2] = {{0, -1}, {-1, 0}, {0, 1}, {1, 1}, {1, 0}, {1, -1}};
-    
-    //sceglie in base a riga, quindi x
-    int (*direzioni)[2] = (x % 2 == 0) ? direzioni_pari : direzioni_dispari;
+    //veccio ordine: int direzioni_pari[6][2] = {{-1, -1}, {-1, 0}, {-1, 1}, {0, 1}, {1, 0}, {0, -1}};
+    int direzioni_pari[6][2] = {//nuovo ordine
+        {-1, -1},  // nord-ovest
+        {-1, 0},   // nord-est  
+        {0, -1},   // ovest
+        {0, 1},    // est
+        {1, -1},   // sud-ovest
+        {1, 0}     // sud-est
+    };
+    //vecchio ordine: int direzioni_dispari[6][2] = {{0, -1}, {-1, 0}, {0, 1}, {1, 1}, {1, 0}, {1, -1}};
+    int direzioni_dispari[6][2] = {//nuovo ordine
+        {-1, 0},   // nord-ovest
+        {-1, 1},   // nord-est
+        {0, -1},   // ovest  
+        {0, 1},    // est
+        {1, 0},    // sud-ovest
+        {1, 1}     // sud-est
+    };
+
+    //sceglie in base a riga, quindi x e non righe-1-x
+    int (*direzioni)[2] = ((x) % 2 == 0) ? direzioni_pari : direzioni_dispari;
     int count = 0;
+
+    //printf("DEBUG VICINI di (%d,%d) usando pattern: %s\n", y, x, (x%2==0) ? "pari" : "dispari");
     
     for (int i = 0; i < 6; i++) {
         int nx = x + direzioni[i][0];
         int ny = y + direzioni[i][1];
 
-        if (coordinate_valide(nx, ny)) {
+        if (nx >= 0 && nx < righe && ny >= 0 && ny < colonne) {
             vicini[count][0] = nx;
             vicini[count][1] = ny;
             count++;
+            //printf("DEBUG VICINI: vicino %d: (%d,%d) -> costo=%d\n", i, ny, nx, ACCESSO(nx, ny).cost);
         }
     }
     return count;
@@ -562,7 +582,7 @@ int dijkstra(int start_x, int start_y, int end_x, int end_y) {
     //partenza
     heap_push(heap, start_x, start_y, 0);
 
-    printf("DEbug: partenza da: %d,%d\n", start_y, start_x);
+    //printf("DEbug: partenza da: %d,%d\n", start_y, start_x);
     
     while (!heap_empty(heap)) {
 
@@ -572,7 +592,7 @@ int dijkstra(int start_x, int start_y, int end_x, int end_y) {
         if (visited[righe - 1 - x][y]) continue;
         visited[righe - 1 - x][y] = true;
 
-        printf("DEGUB: percorso fino a %d,%d con g= %d\n", y, x, g_score[righe - 1 - x][y]);
+        //printf("DEGUB: percorso fino a %d,%d con g= %d\n", y, x, g_score[righe - 1 - x][y]);
         
         //fine trovata
         if (x == end_x && y == end_y) {
@@ -769,4 +789,29 @@ PROBEMI:
     ora sono tornato al punto di prima: edge_cases viene passato ma riga25 di empty ecc danno ancora problemi di +/-1
     usare ovunque in dijkstra le coordinate logiche non ha funzionato.
     sono davveroa corto di idee...
-*/
+    il problema può essere che al mio dijkstra e nei vicini terrestri passo la x senza ribaltarla!
+
+    DAJEEEEE HO RISOLTO ora viene 474 anche lì. il problema era in get vicini terrestr!!!!!
+        davo x%2 che però non era ribaltata!! con righe-1-x%2 risolvo il problema!!
+
+    fuck ora però ho altri problemi in empty, alcuni che venivano corretti ora hanno lo stesso problema di +-1 o 2.
+    può essere che devo considerare in modo diverso le righe pari e quelle dispari? non basta un semplice x%2 o righe-1-x%2.
+    sembra ci sia un problema per come prende le righe pari o dispari, boh
+        per quelle pari posso fare righe-1-x%2 e per quelle dispari potrei provare x%2 però boh mi sa di cabbata
+        devo vedere per quali fa -1 e per quali +1
+        magari l'ordine dei pari e dispari non va bene? io ho fatto bassosx, sx, altosx, altodx, dx, bassodx.
+        provo con ordine nord-ovest, nord-est, ovest, est, sud-ovest, sud-est
+    ora che ho spostato l'ordine di esplorazione, funzionano sia edge_cases, che su empty i due travel_cost:
+        travel_cost 272 114 324 163 da 77 e i problematici come riga 25 travel_cost 38 61 457 170 danno 474 e sono corretti.
+
+    nuovo problema: diff ha evidenziato comunque 150+ errori
+        alcuni valori sono sistematicamente più alti di 1: 941 e 940, 286 e 285, 843 e 842...
+        alcuni-1 dovrebbero essere valori positivi, tipo 117, 364..
+        alcuni miei 443 dovrebbero essere 327(aka differenza di 116)
+        è sempre un problema nella indicizzazzione? :/
+        provo a ribaltare di nuovo l'ordine in cui considero le direzioni
+        non ha funzionato, travel_cost 272 114 324 163 torna a dare 76
+        provo ad  aggiungere dei debug dentro vicnin terrestri e vediamo che fa
+        è servito a nulla, prende correttamente righe pari e dispari usando x%2 e non capisco dove arriva sto nuyovo problema....
+
+        */

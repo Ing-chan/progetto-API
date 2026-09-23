@@ -1,0 +1,65 @@
+Consider a highway described as a sequence of service stations. Each service station is located
+at a distance from the beginning of the highway expressed in kilometers by a positive or zero integer. There are no
+two service stations that have the same distance: each service station is therefore uniquely identified by its distance from the beginning of the highway.
+By its distance from the beginning of the highway.
+
+Each service station is equipped with a fleet of electric rental vehicles. Each vehicle is distinguished
+from the range given by the battery charge, expressed in kilometers, by a positive integer. The fleet
+vehicles at a single station includes a maximum of 512 vehicles. Having rented a car at an s station, it is possible to
+reach all those whose distance from s is less than or equal to the car's range.
+
+A trip is identified by a sequence of stations at which the driver stops. Thus, the trip starts
+from one service station and ends at another, passing through zero or more intermediate stations. Suppose the
+driver cannot turn around during the trip and rents a new car each time he stops at a service station.
+Thus, given two consecutive stops s and t, t must always be farther from the start
+than s, and t must be reached using one of the vehicles available at s.
+
+The goal of the project is as follows: given a pair of stations, plan the route with the fewest
+of stops between them. In case there are multiple routes with the same minimum number of stages (i.e., tied),
+the route that prefers the stages with the shortest distance to the beginning of the highway should be chosen. In other words,
+consider the set of n equal merit paths P = {p1, p2, . . . pn} where each path is a tuple of m elements
+pi = ⟨pi,1, pi,2, . . . pi,m⟩ which are equivalent to the distance to the start of the highway of each stop in order of travel.
+
+The only path pi must be chosen such that there is no other pj with the same k final stages preceded by a
+stage with shorter distance, i.e., ∄j, k : ⟨pi,m-k+1, . . . pi,m⟩ = ⟨pj,m-k+1, . . . pj,m⟩ ∧ pj,m-k < pi,m-k.
+
+The following is an example of a highway. In this example, the correct path between the station at distance 20 and
+the one at distance 50 is 20 → 30 → 50 (and not 20 → 45 → 50). Note that, instead, 50 → 30 → 20 is the path
+correct between the station at distance 50 and the station at distance 20 (thus in the right-to-left direction).
+
+
+
+
+Input file format and expected printouts
+
+The input text file contains a sequence of commands, one per line, with the following format. All values
+positive integers or nulls are encodable in 32 bits.
+
+"add-station distance number-auto autonomy-auto-1 ... autonomy-auto-n"
+Adds a station, located at the given distance, equipped with number-auto, from the given range.
+
+For example: add-station 10 3 100 200 300
+Adds a station at distance 10 from the beginning of the highway, with a fleet of three vehicles with range
+100, 200 and 300 km respectively. If a station already exists at the given distance, the command does nothing.
+Print expected as response: added or not added.
+
+"demolish-station distance"
+Removes the station placed at the given distance, if it exists.
+Print expected as response: demolished or not demolished.
+
+"add-car distance-station autonomy-car-to-access"
+If the station exists, it adds a car to it. It is possible to have multiple cars with the same range.
+Print wait as answer: add or not add.
+
+"scrap-car-distance-station autonomy-car-to-root"
+Removes a car from the indicated station, if the station exists and has at least one car
+with the indicated autonomy.
+Print expected as response: scrapped or not scrapped.
+
+"plan-path distance-station-departure distance-station-arrival"
+Prompts to plan the route with the above constraints.
+Print expectation as a response: the stages in order of travel, represented with the distance of the stations
+from highway start, separated by spaces and at the end followed by a-heading. Departure and
+arrival; if they coincide the station is printed only once. If the route does not exist, it prints no
+route. The planning action does not alter the stations or their fleet. The given stations are
+definitely present

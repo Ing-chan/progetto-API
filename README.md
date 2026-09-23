@@ -60,18 +60,9 @@ OK
 20
 ```
 
-## 📁 Struttura del repository
-
-```
-.
-├── 30.c                  # Sorgente del programma
-├── specifica.pdf          # Testo completo della consegna
-└── risultato_finale.png   # Screenshot/verbale del test di valutazione
-```
-
 ## 📈 Valutazione
 
-_[Se vuoi, indica qui il punteggio ottenuto — il nome `30.c` sembra suggerirlo, ma confermalo tu prima di pubblicarlo]._ Uno screenshot del risultato del test automatico è disponibile in `risultato_finale.png`.
+Uno screenshot del risultato del test automatico è disponibile in `risultato_finale.png`.
 
 ## 📄 Licenza
 

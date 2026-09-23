@@ -1,0 +1,16 @@
+# Eseguibili e oggetti compilati
+*.o
+*.out
+*.exe
+movhex
+30
+
+# File di test/output locali
+output.txt
+*.log
+
+# Editor / OS
+.vscode/
+.idea/
+*.swp
+.DS_Store

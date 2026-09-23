@@ -62,7 +62,7 @@ OK
 
 ## 📈 Valutazione
 
-Uno screenshot del risultato del test automatico è disponibile in `risultato_finale.png`.
+Uno screenshot del risultato del test automatico è disponibile in `risultato_finale.png`. La valutazione è 30.
 
 ## 📄 Licenza
 
